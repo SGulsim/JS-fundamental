@@ -1,139 +1,219 @@
-let tasks = [];
-let completedTaskCount = 0;
+let userTasks = new Map();
+let uniqueCategories = new Set();
 let completedTasks = [];
 
-function showTasks() {
-	if (tasks.length === 0) {
-		console.log('Задачи не были добавлены или они отсутствуют');
-		return;
+function showUserTasks(userId) {
+	const userTasksArray = userTasks.get(userId) || [];
+
+	if (userTasksArray.length === 0) {
+		return `Пользователь ${userId} не имеет задач`;
 	}
 
-	tasks.forEach((task, index) => {
-		console.log(`Задача №${index + 1}: ${task.title}
-		Описание: ${task.description}
-		Статус: ${task.isCompleted ? 'Выполнена' : 'Не выполнена'}
-		Дата создания: ${task.createdDate.toLocaleDateString()}
-		${
-			task.isCompleted
-				? `Дата выполнения: ${task.completedDate.toLocaleDateString()}`
-				: ''
-		}
-		`);
-	});
+	const completedCount = userTasksArray.filter(task => task.isCompleted).length;
+
+	return userTasksArray
+		.map(task => {
+			const {
+				userId: uid,
+				title,
+				description,
+				category,
+				isCompleted,
+				createdDate,
+				completedDate,
+			} = task;
+
+			return `
+Задача: ${title} 
+Пользователь: ${userId}
+Описание: ${description}
+Категория: ${category}
+Статус: ${isCompleted ? 'Выполнена' : 'Не выполнена'}
+Количество выполненных задач: ${completedCount}
+Дата создания: ${createdDate.toLocaleDateString()}
+${isCompleted ? `Дата выполнения: ${completedDate.toLocaleDateString()}` : ''}`;
+		})
+		.join('\n\t\t');
 }
 
-function setTask(taskTitle, taskDescription) {
-	if (taskTitle && taskDescription) {
+function setTask(userId, ...newTasksArray) {
+	if (!userTasks.has(userId)) {
+		userTasks.set(userId, []);
+	}
+
+	const userTasksArray = userTasks.get(userId);
+
+	newTasksArray.forEach(taskData => {
+		const { title, description, category = '', ...rest } = taskData;
+
+		if (!title) {
+			throw new Error('Задача должна иметь заголовок');
+		}
+
 		const newTask = {
-			title: taskTitle,
-			description: taskDescription,
+			userId: parseInt(userId),
+			title,
+			description: description ?? 'Отсутствует описание',
+			category,
 			isCompleted: false,
 			createdDate: new Date(),
 			completedDate: null,
+			completedTaskCount: 0,
+			...rest,
 		};
-		tasks.push(newTask);
-		console.log(`Задача ${taskTitle} добавлена в список.`);
-	}
+
+		userTasksArray.push(newTask);
+		uniqueCategories.add(category);
+		console.log(`Задача "${title}" добавлена пользователю ${userId}`);
+	});
+	userTasks.set(userId, userTasks.get(userId));
 }
 
-function completeTask(index) {
-	if (index >= 0 && index < tasks.length && !tasks[index].isCompleted) {
-		tasks = tasks.map((task, i) => {
-			if (i === index) {
-				const completedTask = {
-					...task,
-					isCompleted: true,
-					completedDate: new Date(),
-				};
-				completedTasks.push(completedTask);
-				completedTaskCount++;
-				return completedTask;
-			}
-			return task;
-		});
-		console.log(`Задача "${tasks[index].title}" выполнена`);
-	} else if (tasks[index]?.isCompleted) {
-		console.log('Задача уже выполнена');
-	} else {
-		console.log('Задачи под таким индексом нет');
+function completeUserTask(userId, index) {
+	const userTasksArray = userTasks.get(userId);
+
+	if (!userTasksArray || index < 0 || index >= userTasksArray.length) {
+		throw new Error('Задачи под таким индексом нет');
 	}
+
+	if (userTasksArray[index]?.isCompleted) {
+		return `Задача уже выполнена пользователем ${userId}`;
+	}
+
+	const completedBefore = userTasksArray.filter(
+		task => task.isCompleted
+	).length;
+	const completedAfter = completedBefore + 1;
+
+	const updatedTask = {
+		...userTasksArray[index],
+		isCompleted: true,
+		completedDate: new Date(),
+		completedTaskCount: completedAfter,
+	};
+
+	userTasksArray[index] = updatedTask;
+
+	userTasksArray.forEach(task => (task.completedTaskCount = completedAfter));
+
+	userTasks.set(userId, userTasksArray);
+
+	completedTasks.push(updatedTask);
+
+	return `Задача "${updatedTask.title}" выполнена`;
 }
 
-function deleteTask(index) {
-	if (index >= 0 && index < tasks.length) {
-		if (!tasks[index].isCompleted) {
-			const response = confirm(`Таска еще не выполнена, удалить?`);
-			if (!response) return 'Удаление приостановлено';
-		}
-		tasks.splice(index, 1);
-		console.log(`Задача под индексом: ${index} была удалена.`);
-	} else {
-		console.log('Задачи под таким индексом нет');
+function deleteTask(userId, index) {
+	const userTasksArray = userTasks.get(userId) || [];
+
+	if (!userTasksArray || index < 0 || index >= userTasksArray.length) {
+		throw new Error('Задачи под таким индексом нет');
 	}
+
+	const task = userTasksArray[index];
+
+	!task.isCompleted &&
+		!confirm(`Таска еще не выполнена, удалить?`) &&
+		(console.log('Удаление приостановлено') || userTasksArray);
+
+	const updatedArray = [
+		...userTasksArray.slice(0, index),
+		...userTasksArray.slice(index + 1),
+	];
+
+	userTasks.set(userId, updatedArray);
+	console.log(`Задача "${task.title}" удалена`);
+
+	return updatedArray;
 }
 
-function clearTasks() {
-	tasks = [];
+function clearTasks(userId) {
+	userTasks.set(userId, []);
 	return `Все задачи были очищены`;
 }
 
 function clearShortTasks() {
-	tasks = tasks.filter(task => task.title.length >= 5);
+	for (const [uid, tasks] of userTasks.entries()) {
+		const filtered = tasks.filter(task => task.title && task.title.length >= 5);
+		userTasks.set(uid, filtered);
+	}
 }
 
-function getTaskDescriptions() {
-	return tasks.map(task => task.description);
+function getTaskDescriptions(userId) {
+	const userTasksArray = userTasks.get(userId) || [];
+	return userTasksArray.map(userTask => userTask.description);
 }
 
 function getLongTasks() {
-	return tasks.filter(task => task.title.length > 10);
+	const result = [];
+	for (const tasks of userTasks.values()) {
+		result.push(...tasks.filter(task => task.title && task.title.length > 10));
+	}
+	return result;
 }
 
-function getTasksByDateRange(startDate, endDate, isCompleted = false) {
-	return tasks.filter(task => {
-		const taskDate = task.createdDate;
+function getTasksByDateRange(userId, startDate, endDate, isCompleted = false) {
+	const userTasksArray = userTasks.get(userId) || [];
+	const userTasksArrayByDateRange = userTasksArray.filter(userTask => {
+		const taskDate = userTask.createdDate;
 		const dateInRange = taskDate >= startDate && taskDate <= endDate;
 
 		if (isCompleted) {
-			return dateInRange && task.isCompleted;
+			return dateInRange && userTask.isCompleted;
 		}
 		return dateInRange;
 	});
+
+	return userTasksArrayByDateRange;
 }
 
-function updateTaskTitle(index, newTitle) {
-	if (index >= 0 && index < tasks.length) {
-		tasks = tasks.map((task, i) =>
-			i === index ? { ...task, title: newTitle } : task
-		);
-		return true;
+function updateTaskTitle(userId, index, newTitle) {
+	const userTasksArray = userTasks.get(userId) || [];
+
+	if (!userTasksArray || index < 0 || index >= userTasksArray.length) {
+		throw new Error('Задачи под таким индексом нет');
 	}
-	return false;
+
+	const updated = userTasksArray.map((userTask, i) =>
+		i === index ? { ...userTask, title: newTitle } : userTask
+	);
+
+	userTasks.set(userId, updated);
 }
-// быстрый тест:
-// function quickTest() {
-// 	console.log('ТЕСТ');
 
-// 	setTask('Задача 1', 'Описание 1');
-// 	setTask('Длинная задача123', 'Описание 2');
-// 	setTask('Тест', 'Короткая');
+function getUniqueCategories() {
+	return Array.from(uniqueCategories);
+}
 
-// 	console.log('\nВсе задачи:');
-// 	showTasks();
+function exportTasksToJSON(userId) {
+	const userTasksArray = userTasks.get(userId) || [];
+	return JSON.stringify(userTasksArray, null, 2);
+}
 
-// 	console.log('\nОписания:', getTaskDescriptions());
-// 	console.log(
-// 		'Длинные задачи:',
-// 		getLongTasks().map(t => t.title)
-// 	);
+function importTasksFromJSON(userId, jsonString) {
+	try {
+		const importedTasks = JSON.parse(jsonString);
 
-// 	completeTask(0);
-// 	clearShortTasks();
+		if (!Array.isArray(importedTasks)) {
+			throw new Error('Некорректный формат JSON: ожидается массив');
+		}
 
-// 	console.log('\nПосле операций:');
-// 	showTasks();
+		importedTasks.forEach(task => {
+			if (!task.userId) {
+				throw new Error('Задача должна быть закреплена за пользователем');
+			}
+			if (!task.category) {
+				throw new Error('Задача должна иметь категорию');
+			}
+			if (!task.title) {
+				throw new Error('Задача должна иметь заголовок');
+			}
+		});
 
-// 	clearTasks();
-// }
-
-// quickTest();
+		userTasks.set(userId, importedTasks);
+		return importedTasks;
+	} catch (error) {
+		console.error('Ошибка импорта:', error.message);
+		throw error;
+	}
+}
